@@ -24,9 +24,33 @@ io.on("connection", (socket) => {
 
   //   handling a user to join in a room
   socket.on("user_join_room", (data) => {
-    const { userName, roomId } = data || {};
+    const { username, roomId } = data || {};
     socket.join(roomId);
 
-    console.log(`${userName} has joined the room ${roomId}`);
+    // notify that a user joined the room
+    socket
+      .to(roomId)
+      .emit("user_join_room", `${username} has joined the room ${roomId}`);
+
+    console.log(`${username} has joined the room ${roomId}`);
+  });
+
+  socket.on("send_message", ({ username, roomId, text }) => {
+    socket.to(roomId).emit("message", { username, text, type: "regular" });
+  });
+
+  // left chat
+  socket.on("user_left_room", ({ username, roomId }) => {
+    socket.to(roomId).emit("message", {
+      username,
+      text: `${username} has left the chat`,
+      type: "notif",
+    });
+  });
+
+  // handle Activity
+  socket.on("user_typing", ({ username, roomId }) => {
+    console.log("user is typing", username);
+    socket.to(roomId).emit("user_typing", username);
   });
 });

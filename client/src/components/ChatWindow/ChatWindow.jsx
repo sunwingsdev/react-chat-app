@@ -1,19 +1,78 @@
 /* eslint-disable react/prop-types */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "./ChatWindow.module.css";
 import { getFormattedTime } from "../../util";
 import { v4 as uuidv4 } from "uuid";
 
-const ChatWindow = ({ username, roomId }) => {
+const ChatWindow = ({ username, roomId, socket }) => {
   const [currentMessage, setCurrentMessage] = useState("");
-  // const [activityMessage, setActivityMessage] = useState("");
+  const [activityMessage, setActivityMessage] = useState("");
   const [messages, setMessages] = useState([]);
-  console.log(messages);
 
   const handleInputChange = (e) => {
     e.preventDefault();
     setCurrentMessage(e.target.value);
+
+    // handle activity
+    socket.emit("user_typing", { username, roomId });
   };
+
+  useEffect(() => {
+    let timer;
+    socket.on("user_typing", (username) => {
+      setActivityMessage(`${username} is typing...`);
+      clearTimeout(timer);
+
+      timer = setTimeout(() => {
+        setActivityMessage("");
+      }, 3000);
+    });
+
+    return () => {
+      socket.off("user_typing");
+    };
+  });
+
+  useEffect(() => {
+    // receiving messages from the server
+
+    socket.on("message", ({ username, text, type }) => {
+      const uuid = uuidv4();
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { id: uuid, username, text, type },
+      ]);
+    });
+
+    return () => {
+      socket.off("message");
+    };
+  });
+
+  useEffect(() => {
+    socket.on("user_join_room", (message) => {
+      const uuid = uuidv4();
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { id: uuid, text: message, type: "notif" },
+      ]);
+    });
+
+    return () => {
+      socket.off("user_join_room");
+    };
+  });
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      socket.emit("user_left_room", { username, roomId });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  });
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -29,6 +88,13 @@ const ChatWindow = ({ username, roomId }) => {
       },
     ]);
     // broadcast message to other users
+
+    socket.emit("send_message", {
+      roomId,
+      username,
+      text: currentMessage,
+    });
+    setCurrentMessage("");
   };
 
   return (
@@ -68,6 +134,7 @@ const ChatWindow = ({ username, roomId }) => {
               );
             }
           })}
+          <div className={styles.activityText}>{activityMessage}</div>
         </div>
         <form onSubmit={handleSendMessage} className={styles.messageForm}>
           <input
